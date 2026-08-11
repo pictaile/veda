@@ -1,0 +1,9 @@
+services:
+  veda-app:
+    build: .
+    container_name: veda-container
+    environment:
+      - CLAUDE_CODE_OAUTH_TOKEN=5V5dN18AjBRHKt90J7jHgTzugBUgHPnO8rDO6Lh4MS0QWgjW#paVpfR3mPvDv8RNSJ6Ln06DktZUVxbvjMrXfK743QLI
+    volumes:
+      - .:/app
+    command: tail -f /dev/null
