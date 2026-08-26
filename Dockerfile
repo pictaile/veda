@@ -15,5 +15,6 @@ WORKDIR /app
 COPY . .
 
 RUN cmake -G Ninja -S . -B build && cmake --build build
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 
 CMD ["./build/veda"]

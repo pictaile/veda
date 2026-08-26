@@ -1,26 +1,17 @@
 #include <iostream>
-
-int test()
-{
-    int res = 0;
-    for (int i = 1; i <= 5; i++)
-    {
-        res += i;
-        std::cout << "i = " << i << std::endl;
-    }
-
-    return res;
-
-}
+#include "Facade.h"
+// #include "facade/Facade.h"
 
 int main()
 {
     const auto lang = "C++";
-    std::cout << "Hello and welcome to " << lang << "!\n";
 
+    Facade facade;
+    facade.allClassNames();
 
-    std::cout << "i = " << test() << std::endl;
+    std::cout << "end" <<  std::endl;
 
-    return 0;}
+    return 0;
+}
 
 
