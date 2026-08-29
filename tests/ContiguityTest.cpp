@@ -43,9 +43,34 @@ Offsets walk(const Shape& shape, const Strides& strides)
     return offsets;
 }
 
-bool is_contiguous(const Shape& shape, const Strides& strides)
+// The naive rule: are these the strides a fresh allocation would have?
+bool matches_fresh_strides(const Shape& shape, const Strides& strides)
 {
     return strides == contiguous_strides(shape);
+}
+
+// The rule Tensor::is_contiguous() actually uses. Same thing, except that an axis of extent 1 is
+// never stepped along, so its stride constrains nothing. See the last block of main().
+bool is_contiguous(const Shape& shape, const Strides& strides)
+{
+    if (shape.size() == 0)
+    {
+        return true;
+    }
+    size_t expected = 1;
+    for (size_t k = shape.rank(); k-- > 0;)
+    {
+        if (shape[k] == 1)
+        {
+            continue;
+        }
+        if (strides[k] != expected)
+        {
+            return false;
+        }
+        expected *= shape[k];
+    }
+    return true;
 }
 
 int main()
@@ -81,6 +106,26 @@ int main()
     for (const Shape& shape : {Shape({}), Shape({5}), Shape({2, 3}), Shape({2, 3, 4})})
     {
         CHECK(is_contiguous(shape, contiguous_strides(shape)));
+    }
+
+    // Axes of extent 1: the one place where the two rules disagree.
+    //
+    // Slicing logits [1, 8, 32] down to the last position gives shape (1, 1, 32) with strides
+    // (256, 32, 1). A fresh allocation of that shape would have strides (32, 32, 1), so the naive
+    // comparison rejects it — but the index of an axis of extent 1 is always 0, so those strides
+    // are never used. The 32 floats are one unbroken run, and reshape to (1, 32) is safe.
+    {
+        const Shape last_position({1, 1, 32});
+        const Strides sliced({256, 32, 1});
+
+        CHECK(!matches_fresh_strides(last_position, sliced));
+        CHECK(is_contiguous(last_position, sliced));
+
+        // the walk proves it: 32 consecutive offsets
+        const Offsets offsets = walk(last_position, sliced);
+        CHECK_EQ(offsets.size(), size_t{32});
+        CHECK_EQ(offsets.front(), size_t{0});
+        CHECK_EQ(offsets.back(), size_t{31});
     }
 
     return VEDA_TEST_SUMMARY("ContiguityTest");
