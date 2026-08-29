@@ -6,6 +6,11 @@ set(CMAKE_CXX_STANDARD 23)
 
 
 add_executable(veda src/main.cpp
+        src/libs/tensor/Shape.cpp
+        src/libs/tensor/Shape.h
+        src/libs/tensor/Storage.h
+        src/libs/tensor/Strides.cpp
+        src/libs/tensor/Strides.h
         src/libs/tensor/Tensor.cpp
         src/libs/tensor/Tensor.h
         src/libs/weights_loader/WeightsLoader.cpp
@@ -26,3 +31,21 @@ target_include_directories(veda PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/sampler
         ${CMAKE_CURRENT_SOURCE_DIR}/src/core/facade
 )
+
+enable_testing()
+
+# Кожен тест — окремий бінарник з власним main(); харнес у tests/TestSupport.h.
+function(veda_add_test name)
+    add_executable(${name} tests/${name}.cpp ${ARGN})
+    target_include_directories(${name} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/tensor
+    )
+    add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+veda_add_test(ShapeTest src/libs/tensor/Shape.cpp)
+veda_add_test(TensorTest src/libs/tensor/Shape.cpp src/libs/tensor/Strides.cpp src/libs/tensor/Tensor.cpp)
+veda_add_test(StridesTest src/libs/tensor/Shape.cpp src/libs/tensor/Strides.cpp src/libs/tensor/Tensor.cpp)
+veda_add_test(ContiguityTest src/libs/tensor/Shape.cpp src/libs/tensor/Strides.cpp)
+veda_add_test(ReshapeTest src/libs/tensor/Shape.cpp src/libs/tensor/Strides.cpp src/libs/tensor/Tensor.cpp)
