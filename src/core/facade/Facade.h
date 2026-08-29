@@ -15,6 +15,8 @@ class Facade
 public:
     Facade();
     void allClassNames();
+    void example_create_tensor();
+    void examples();
 
 private:
     BytePairEncoding bytePairEncoding;

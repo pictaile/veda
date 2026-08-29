@@ -61,6 +61,16 @@ public:
     // an unchanged element count and a contiguous input; throws otherwise.
     Tensor reshape(const Shape& new_shape) const;
 
+    // Swaps two axes by swapping their extents and their strides — nothing else changes, and no
+    // data moves. Works on any tensor, contiguous or not: it relabels rather than reorders.
+    // Dimension indices are asserted to be within the rank (AD6).
+    Tensor transpose(size_t dim_a, size_t dim_b) const;
+
+    // Narrows one dimension to count entries starting at start, leaving every other dimension
+    // alone. Strides never change; only the shape entry and the starting offset do. The range is
+    // asserted to fit within the dimension (AD6).
+    Tensor slice(size_t dim, size_t start, size_t count) const;
+
     // The first element of this tensor. The only place where element counting turns into
     // pointer arithmetic — sizeof(float) appears nowhere in this layer.
     float* data() noexcept { return storage_->data() + offset_; }

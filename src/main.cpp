@@ -7,8 +7,9 @@ int main()
     const auto lang = "C++";
 
     Facade facade;
-    facade.allClassNames();
+    facade.examples();
 
+    facade.example_create_tensor();
     std::cout << "end" <<  std::endl;
 
     return 0;

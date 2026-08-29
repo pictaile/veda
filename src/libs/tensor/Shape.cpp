@@ -1,7 +1,6 @@
 #include "Shape.h"
 
-#include <functional>
-#include <numeric>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -9,16 +8,30 @@ namespace veda::core
 {
     namespace
     {
-        // std::accumulate with an initial value of 1 gives the empty product for free:
-        // the size of a rank-0 shape is 1, not 0.
+        // The product of the dimensions, starting from 1 so that the empty product falls out for
+        // free: the size of a rank-0 shape is 1, not 0.
+        //
+        // The multiplication is checked rather than trusted. Shapes are built from weight-file
+        // headers, and a corrupt one can claim any dimensions at all; an unchecked product would
+        // wrap around to a small number and quietly under-allocate.
         size_t element_count(const std::vector<size_t>& dims)
         {
-            return std::accumulate(
-                dims.begin(),
-                dims.end(),
-                size_t{1},
-                std::multiplies<size_t>()
-                );
+            size_t count = 1;
+            for (const size_t dim : dims)
+            {
+                if (dim != 0 && count > std::numeric_limits<size_t>::max() / dim)
+                {
+                    std::string rendered;
+                    for (size_t i = 0; i < dims.size(); ++i)
+                    {
+                        rendered += (i > 0 ? ", " : "") + std::to_string(dims[i]);
+                    }
+                    throw std::overflow_error(
+                        "Shape: element count of (" + rendered + ") overflows size_t");
+                }
+                count *= dim;
+            }
+            return count;
         }
     } // namespace
 

@@ -102,6 +102,21 @@ inline bool aborts(const std::function<void()>& fn)
 }
 #endif
 
+// Real arithmetic is compared with a tolerance: unlike the bf16 widening, the last bits here
+// depend on summation order.
+inline void check_near(double actual, double expected, double tolerance, const std::string& what,
+                       const char* file, int line)
+{
+    ++checks_run;
+    const double difference = actual > expected ? actual - expected : expected - actual;
+    if (!(difference <= tolerance))
+    {
+        report_failure(what + "  (got " + render(actual) + ", expected " + render(expected) +
+                           " +/- " + render(tolerance) + ")",
+                       file, line);
+    }
+}
+
 inline int summary(const char* suite)
 {
     std::cout << suite << ": " << (checks_run - checks_failed) << "/" << checks_run << " checks passed\n";
@@ -113,6 +128,10 @@ inline int summary(const char* suite)
 #define CHECK(cond) ::veda::test::check((cond), #cond, __FILE__, __LINE__)
 #define CHECK_EQ(actual, expected) ::veda::test::check_eq((actual), (expected), #actual " == " #expected, __FILE__, __LINE__)
 #define CHECK_NE(actual, unexpected) ::veda::test::check_ne((actual), (unexpected), #actual " != " #unexpected, __FILE__, __LINE__)
+
+#define CHECK_NEAR(actual, expected, tolerance)                                                  \
+    ::veda::test::check_near((actual), (expected), (tolerance), #actual " ~= " #expected, __FILE__, \
+                             __LINE__)
 
 #define CHECK_THROWS_AS(expr, exception_type)                                              \
     do {                                                                                   \

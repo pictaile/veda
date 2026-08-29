@@ -1,8 +1,10 @@
 #include "Tensor.h"
 
+#include <algorithm>
 #include <cassert>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace veda::core
 {
@@ -54,7 +56,33 @@ Tensor Tensor::view(std::shared_ptr<Storage> storage, size_t offset, Shape shape
 
 bool Tensor::is_contiguous() const
 {
-    return strides_ == contiguous_strides(shape_);
+    if (shape_.size() == 0)
+    {
+        return true; // nothing to walk
+    }
+
+    // Walking in index order must walk the buffer straight through. Checked from the right, each
+    // axis must step over the whole block of axes to its right.
+    //
+    // Axes of extent 1 are skipped: their index is always 0, so they are never stepped along and
+    // their stride constrains nothing. Slicing [B, T, V] down to the last position leaves
+    // strides (T*V, V, 1) under shape (1, 1, V) — still one unbroken run, and comparing against
+    // contiguous_strides() alone would wrongly call it strided.
+    size_t expected = 1;
+    for (size_t k = shape_.rank(); k-- > 0;)
+    {
+        const size_t extent = shape_[k];
+        if (extent == 1)
+        {
+            continue;
+        }
+        if (strides_[k] != expected)
+        {
+            return false;
+        }
+        expected *= extent;
+    }
+    return true;
 }
 
 Tensor Tensor::reshape(const Shape& new_shape) const
@@ -75,6 +103,38 @@ Tensor Tensor::reshape(const Shape& new_shape) const
 
     // Same storage, same offset, same bytes — only the reading rule changes.
     return Tensor(storage_, offset_, new_shape, contiguous_strides(new_shape));
+}
+
+Tensor Tensor::transpose(size_t dim_a, size_t dim_b) const
+{
+    assert(dim_a < shape_.rank() && "Tensor::transpose: first dimension is out of range");
+    assert(dim_b < shape_.rank() && "Tensor::transpose: second dimension is out of range");
+
+    // A stride is "how far to step to advance this axis by one", so swapping the axes means
+    // swapping their strides. The offset formula then reaches the same buffer position from the
+    // swapped coordinates: i*s0 + j*s1 == j*s1 + i*s0.
+    std::vector<size_t> dims = shape_.dims();
+    std::vector<size_t> strides = strides_;
+    std::swap(dims[dim_a], dims[dim_b]);
+    std::swap(strides[dim_a], strides[dim_b]);
+
+    return Tensor(storage_, offset_, Shape(std::move(dims)), std::move(strides));
+}
+
+Tensor Tensor::slice(size_t dim, size_t start, size_t count) const
+{
+    assert(dim < shape_.rank() && "Tensor::slice: dimension is out of range");
+    assert(start + count <= shape_[dim] && "Tensor::slice: range is out of bounds");
+
+    // Skipping the first `start` entries along a dimension means moving the starting point
+    // forward by `start` steps of that dimension's stride. Within the slice, advancing any
+    // dimension still costs what it did before — so the strides are carried over untouched.
+    const size_t new_offset = offset_ + start * strides_[dim];
+
+    std::vector<size_t> dims = shape_.dims();
+    dims[dim] = count;
+
+    return Tensor(storage_, new_offset, Shape(std::move(dims)), strides_);
 }
 
 float Tensor::at(std::initializer_list<size_t> indices) const

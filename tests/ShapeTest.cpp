@@ -45,6 +45,13 @@ int main()
     CHECK_EQ(to_string(Shape({7})), std::string("(7)"));
     CHECK_EQ(to_string(Shape({})), std::string("()"));
 
+    // a dimension product that would wrap around size_t is refused rather than silently truncated
+    // — shapes come from weight-file headers, which can be corrupt
+    CHECK_THROWS_AS(Shape({size_t{1} << 62, 4}), std::overflow_error);
+    CHECK_THROWS_AS(Shape({size_t{1} << 40, size_t{1} << 40}), std::overflow_error);
+    CHECK_EQ(Shape({size_t{1} << 62, 2}).size(), size_t{1} << 63);   // still representable
+    CHECK_EQ(Shape({size_t{1} << 62, 0, 4}).size(), size_t{0});      // a zero dimension short-circuits
+
     // indexing past the rank is refused, and the message names the shape
     CHECK_THROWS_AS(Shape({2, 3})[2], std::out_of_range);
     CHECK_THROWS_AS(Shape({})[0], std::out_of_range);
