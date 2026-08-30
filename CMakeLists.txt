@@ -22,6 +22,18 @@ add_executable(veda src/main.cpp
         src/libs/byte_pair_encoder/BytePairEncoding.h
         src/libs/sampler/Sampler.cpp
         src/libs/sampler/Sampler.h
+        src/libs/io/Json.cpp
+        src/libs/io/Json.h
+        src/libs/io/ModelConfig.cpp
+        src/libs/io/ModelConfig.h
+        src/libs/io/Safetensors.cpp
+        src/libs/io/Safetensors.h
+        src/libs/nn/Embedding.cpp
+        src/libs/nn/Embedding.h
+        src/libs/nn/Linear.cpp
+        src/libs/nn/Linear.h
+        src/libs/nn/RMSNorm.cpp
+        src/libs/nn/RMSNorm.h
         src/libs/ops/Activations.cpp
         src/libs/ops/Activations.h
         src/libs/ops/Broadcast.cpp
@@ -43,6 +55,8 @@ target_include_directories(veda PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/core
         ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/tensor
         ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/ops
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/io
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/nn
         ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/weights_loader
         ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/byte_pair_encoder
         ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/sampler
@@ -58,6 +72,9 @@ function(veda_add_test name)
             ${CMAKE_CURRENT_SOURCE_DIR}/tests
             ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/tensor
             ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/ops
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/testing
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/io
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/nn
     )
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
@@ -67,6 +84,21 @@ set(VEDA_CORE_SOURCES
         src/libs/tensor/Strides.cpp
         src/libs/tensor/Tensor.cpp
         src/libs/tensor/DType.cpp)
+
+# Development tooling: linked into tests only, never into the veda binary (E3 acceptance criterion).
+set(VEDA_TESTING_SOURCES
+        src/libs/testing/Compare.cpp
+        src/libs/testing/TensorFile.cpp)
+
+set(VEDA_IO_SOURCES
+        src/libs/io/Json.cpp
+        src/libs/io/ModelConfig.cpp
+        src/libs/io/Safetensors.cpp)
+
+set(VEDA_NN_SOURCES
+        src/libs/nn/Embedding.cpp
+        src/libs/nn/Linear.cpp
+        src/libs/nn/RMSNorm.cpp)
 
 set(VEDA_OPS_SOURCES
         src/libs/ops/Activations.cpp
@@ -96,3 +128,42 @@ veda_add_test(SoftmaxIdeaTest)
 veda_add_test(SoftmaxTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES})
 veda_add_test(ActivationsTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES})
 veda_add_test(RmsNormalizeTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES})
+veda_add_test(ToleranceTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES})
+veda_add_test(JsonScopeTest)
+veda_add_test(CompareTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES} ${VEDA_TESTING_SOURCES})
+veda_add_test(TensorFileTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES} ${VEDA_TESTING_SOURCES})
+
+# The cross-language check: the golden-file format read and written from both sides. A helper
+# binary stands in for the C++ side; the script drives it. Skipped when no interpreter is found —
+# building and running veda never requires Python (E3 acceptance criterion).
+add_executable(tensor_file_tool tools/tensor_file_tool.cpp
+        src/libs/testing/TensorFile.cpp
+        ${VEDA_CORE_SOURCES})
+target_include_directories(tensor_file_tool PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/tensor
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/ops
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/testing)
+
+find_package(Python3 COMPONENTS Interpreter)
+if (Python3_Interpreter_FOUND)
+    add_test(NAME CrossLanguageRoundTrip
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/cross_language_roundtrip.py
+                    $<TARGET_FILE:tensor_file_tool>)
+else ()
+    message(STATUS "python3 not found: skipping the cross-language format test")
+endif ()
+veda_add_test(JsonTest ${VEDA_CORE_SOURCES} ${VEDA_IO_SOURCES})
+veda_add_test(SafetensorsTest ${VEDA_CORE_SOURCES} ${VEDA_IO_SOURCES})
+veda_add_test(ModelConfigTest ${VEDA_CORE_SOURCES} ${VEDA_IO_SOURCES})
+veda_add_test(EmbeddingIdeaTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES})
+
+# The E4 milestone: load a real model's config and weights and print what was read.
+add_executable(veda_inspect tools/inspect_model.cpp ${VEDA_CORE_SOURCES} ${VEDA_IO_SOURCES})
+target_include_directories(veda_inspect PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/tensor
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/libs/io)
+veda_add_test(EmbeddingTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES} ${VEDA_NN_SOURCES})
+veda_add_test(LinearTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES} ${VEDA_NN_SOURCES})
+veda_add_test(ProjectionIdeaTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES})
+veda_add_test(RMSNormLayerTest ${VEDA_CORE_SOURCES} ${VEDA_OPS_SOURCES} ${VEDA_NN_SOURCES})
