@@ -4,8 +4,10 @@
 #include "Shape.h"
 #include "Storage.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace veda::ops
@@ -16,19 +18,42 @@ using core::Tensor;
 
 namespace
 {
+size_t threads_ = 1;
+
+// Below this many multiply-adds a matmul stays single-threaded: spawning threads for a 2x2 costs
+// more than it saves. Chosen by measurement, not intuition.
+constexpr size_t threading_threshold = 1 << 16;
+} // namespace
+
+void set_thread_count(size_t threads)
+{
+    threads_ = threads == 0 ? 1 : threads;
+}
+
+size_t thread_count()
+{
+    return threads_;
+}
+
+namespace
+{
 
 // One matrix product, written into a caller-provided contiguous destination. Both operands are
 // described by two strides each, so matmul and matmul_nt — and every batch element of either —
 // share this loop and cannot drift apart.
-void multiply_into(const float* left, size_t a_row, size_t a_column,
-                   const float* right, size_t b_shared, size_t b_column,
-                   float* destination, size_t m, size_t k, size_t n)
+// A rectangle of the output: rows [first_row, last_row) and columns [first_column, last_column).
+// Every output still sums k in ascending order, so the results are bitwise identical however the
+// rectangle is carved up.
+void multiply_block(const float* left, size_t a_row, size_t a_column,
+                    const float* right, size_t b_shared, size_t b_column,
+                    float* destination, size_t first_row, size_t last_row, size_t first_column,
+                    size_t last_column, size_t k, size_t n)
 {
-    for (size_t i = 0; i < m; ++i)
+    for (size_t i = first_row; i < last_row; ++i)
     {
         const size_t row_base = i * a_row;   // hoisted: independent of j and of the inner loop
 
-        for (size_t j = 0; j < n; ++j)
+        for (size_t j = first_column; j < last_column; ++j)
         {
             const size_t column_base = j * b_column;
 
@@ -45,6 +70,62 @@ void multiply_into(const float* left, size_t a_row, size_t a_column,
 
             destination[i * n + j] = sum;
         }
+    }
+}
+
+void multiply_into(const float* left, size_t a_row, size_t a_column,
+                   const float* right, size_t b_shared, size_t b_column,
+                   float* destination, size_t m, size_t k, size_t n)
+{
+    // Split along whichever output axis is long enough to divide.
+    //
+    // The profile made this necessary: during generation the activation is a single token, so the
+    // output has ONE row, and splitting rows parallelises nothing. Only the prefill has rows to
+    // divide. Splitting columns works in both cases and keeps each output's summation order.
+    const bool split_rows = m >= threads_;
+    const size_t divisible = split_rows ? m : n;
+    const size_t threads = std::min(threads_, divisible);
+
+    if (threads <= 1 || m * n * k < threading_threshold)
+    {
+        multiply_block(left, a_row, a_column, right, b_shared, b_column, destination, 0, m, 0, n, k,
+                       n);
+        return;
+    }
+
+    std::vector<std::thread> workers;
+    workers.reserve(threads - 1);
+    const size_t per_thread = (divisible + threads - 1) / threads;
+
+    auto run_slice = [&](size_t first, size_t last) {
+        if (split_rows)
+        {
+            multiply_block(left, a_row, a_column, right, b_shared, b_column, destination, first,
+                           last, 0, n, k, n);
+        }
+        else
+        {
+            multiply_block(left, a_row, a_column, right, b_shared, b_column, destination, 0, m,
+                           first, last, k, n);
+        }
+    };
+
+    for (size_t t = 1; t < threads; ++t)
+    {
+        const size_t first = std::min(t * per_thread, divisible);
+        const size_t last = std::min(first + per_thread, divisible);
+        if (first >= last)
+        {
+            break;
+        }
+        workers.emplace_back([=, &run_slice] { run_slice(first, last); });
+    }
+
+    run_slice(0, std::min(per_thread, divisible));
+
+    for (std::thread& worker : workers)
+    {
+        worker.join();
     }
 }
 

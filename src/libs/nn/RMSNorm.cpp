@@ -2,6 +2,7 @@
 
 #include "Elementwise.h"
 #include "Normalize.h"
+#include "Profile.h"
 #include "Shape.h"
 
 #include <stdexcept>
@@ -29,6 +30,7 @@ RMSNorm::RMSNorm(Tensor gamma, float eps) : gamma_(std::move(gamma)), eps_(eps)
 
 Tensor RMSNorm::forward(const Tensor& x) const
 {
+    const profile::Scope scope("norm");
     if (x.rank() == 0 || x.shape()[x.rank() - 1] != hidden_size())
     {
         throw std::invalid_argument("nn::RMSNorm: input " + x.shape().to_string() +

@@ -154,4 +154,40 @@ float Tensor::at(std::initializer_list<size_t> indices) const
     return storage_->data()[flat];
 }
 
+Tensor contiguous(const Tensor& tensor)
+{
+    Tensor out{tensor.shape()};
+    if (tensor.numel() == 0)
+    {
+        return out;
+    }
+
+    // The index walk is written again here rather than reusing the one in veda::ops::detail: core
+    // sits below ops and may not depend on it (architecture §1).
+    const Shape& shape = tensor.shape();
+    std::vector<size_t> index(shape.rank(), 0);
+    float* destination = out.data();
+
+    for (size_t i = 0; i < shape.size(); ++i)
+    {
+        size_t flat = tensor.offset();
+        for (size_t k = 0; k < shape.rank(); ++k)
+        {
+            flat += index[k] * tensor.strides()[k];
+        }
+        destination[i] = tensor.storage()->data()[flat];
+
+        for (size_t k = shape.rank(); k-- > 0;)
+        {
+            if (++index[k] < shape[k])
+            {
+                break;
+            }
+            index[k] = 0;
+        }
+    }
+
+    return out;
+}
+
 } // namespace veda::core

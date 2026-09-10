@@ -24,6 +24,23 @@ namespace veda::ops
 // contiguous; the input is untouched and may be non-contiguous.
 core::Tensor softmax(const core::Tensor& tensor, size_t dim);
 
+// The same function in log space:
+//
+//     log_softmax(x)i = xi - m - log(sum over j of exp(xj - m))
+//
+// Not an optimisation of log(softmax(x)) but a different numerical object. softmax is safe at the
+// top end — the max subtraction makes overflow impossible — and unsafe at the bottom: with logits
+// [0, 200] it returns exactly [0, 1], the small probability having underflowed fp32 to zero, and
+// log 0 is -inf. The information is destroyed by the division, and nothing downstream recovers it.
+//
+// Staying in log space never divides. The same max subtraction protects exp, the sum is at least 1
+// so its log is finite, and [0, 200] gives -200: a large loss rather than an infinity that poisons
+// every gradient behind it. This is what cross-entropy is built on (E15).
+//
+// A -inf entry stays -inf rather than becoming NaN. Same contract otherwise: throws
+// std::invalid_argument if dim is not below the rank, result freshly allocated and contiguous.
+core::Tensor log_softmax(const core::Tensor& tensor, size_t dim);
+
 } // namespace veda::ops
 
 #endif //VEDA_SOFTMAX_H

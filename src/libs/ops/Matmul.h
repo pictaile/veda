@@ -6,6 +6,20 @@
 namespace veda::ops
 {
 
+// How many threads a matmul may split its output rows across. 1 — the default — disables threading
+// entirely, so a normal build behaves exactly as it did before E13.
+//
+// Rows are independent: row i reads all of A's row i and all of B, and writes only C's row i. So
+// splitting them needs no synchronisation beyond the join, and — the point — leaves each output's
+// summation order untouched, which keeps every result *bitwise* identical. Floating-point addition
+// is not associative (E3.S1.T1), so an optimisation that reordered the sums would change the last
+// bits and cost the exact tests written across twelve epics.
+//
+// The gain is bounded by memory bandwidth: inference reads every weight once per token, and four
+// threads do not give four times the throughput on a kernel that is waiting on memory.
+void set_thread_count(size_t threads);
+size_t thread_count();
+
 // Matrix multiplication.
 //
 //     C[i, j] = sum over k of  A[i, k] * B[k, j]

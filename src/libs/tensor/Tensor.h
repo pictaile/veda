@@ -85,6 +85,17 @@ private:
     std::vector<size_t> strides_;
 };
 
+// A dense copy of any view, walked in index order.
+//
+// E1 deliberately did not build this: reshape refuses a non-contiguous input, and until something
+// genuinely needed to materialise a view, a copy helper would have been speculative. The first
+// caller is the attention head merge (E7.S5.T6), where transpose scatters a token's heads T*Dh
+// apart and a reshape can only relabel, never gather.
+//
+// An already-contiguous tensor is still copied: a caller asking for a dense tensor wants an
+// independent one.
+Tensor contiguous(const Tensor& tensor);
+
 } // namespace veda::core
 
 #endif //VEDA_TENSOR_H

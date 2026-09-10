@@ -1,5 +1,6 @@
 #include "Embedding.h"
 
+#include "Profile.h"
 #include "Storage.h"
 
 #include <stdexcept>
@@ -23,6 +24,7 @@ Embedding::Embedding(Tensor table) : table_(std::move(table))
 
 Tensor Embedding::forward(const std::vector<int64_t>& ids, const Shape& id_shape) const
 {
+    const profile::Scope scope("embedding");
     if (ids.size() != id_shape.size())
     {
         throw std::invalid_argument("nn::Embedding: " + std::to_string(ids.size()) +
